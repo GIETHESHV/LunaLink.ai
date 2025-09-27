@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import {
   Plus,
   MessageSquare,
@@ -26,11 +26,13 @@ import {
   Volume2,
   ArrowUp,
   Paperclip,
+  Brain,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-guard"
 import Image from "next/image"
 import dynamic from 'next/dynamic';
+import { MindMapCanvas } from "@/components/mindmap/MindMapCanvas"
 
 const Mic = dynamic(() => import('lucide-react').then((mod) => mod.Mic), { ssr: false });
 const MicOff = dynamic(() => import('lucide-react').then((mod) => mod.MicOff), { ssr: false });
@@ -87,6 +89,59 @@ export default function Dashboard() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const fileInputRef = useRef(null)
   const [selectedLanguage, setSelectedLanguage] = useState("en") // Default to English
+  const [mode, setMode] = useState("chat") // "chat" or "mindmap"
+  const [mindMapData, setMindMapData] = useState(null)
+  const [selectedNodeId, setSelectedNodeId] = useState("center")
+  const [showTutorial, setShowTutorial] = useState(true)
+  const [isLoadingMindMap, setIsLoadingMindMap] = useState(false)
+
+  // Generate mind map from API
+  const generateMindMap = useCallback(async (topic) => {
+    setIsLoadingMindMap(true)
+    try {
+      const response = await fetch('http://localhost:8000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: topic, 
+          target_language: selectedLanguage, 
+          mode: 'mindmap' 
+        }),
+      })
+      const data = await response.json()
+      if (data.mindmap) {
+        setMindMapData(data.mindmap)
+      }
+    } catch (error) {
+      console.error('Error generating mind map:', error)
+      // Fallback to default data
+      setMindMapData({
+        topic: topic || "LunaLink AI Assistant",
+        branches: [
+          {
+            title: "Introduction",
+            subtopics: ["Overview", "Key Concepts"]
+          },
+          {
+            title: "Features",
+            subtopics: ["Chat Mode", "Voice Mode", "Mind Map"]
+          },
+          {
+            title: "Next Steps",
+            subtopics: ["Explore", "Customize", "Share"]
+          }
+        ]
+      })
+    }
+    setIsLoadingMindMap(false)
+  }, [selectedLanguage])
+
+  // Load initial mind map when switching to mindmap mode
+  useEffect(() => {
+    if (mode === 'mindmap' && !mindMapData) {
+      generateMindMap('LunaLink AI Assistant')
+    }
+  }, [mode, mindMapData, generateMindMap])
 
   const supportedLanguages = [
     { code: "en", name: "English" },
@@ -128,28 +183,43 @@ export default function Dashboard() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://localhost:8000/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: inputMessage, target_language: selectedLanguage }),
-      })
+      if (mode === "mindmap") {
+        // Generate mind map from the message
+        await generateMindMap(inputMessage)
 
-      if (!response.ok) {
-        throw new Error("API Error")
+        // Add a confirmation message
+        const aiResponse = {
+          id: Date.now() + 1,
+          type: "assistant",
+          content: `I've generated a mind map for: "${inputMessage}"`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, aiResponse])
+      } else {
+        // Regular chat response
+        const response = await fetch("http://localhost:8000/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: inputMessage, target_language: selectedLanguage }),
+        })
+
+        if (!response.ok) {
+          throw new Error("API Error")
+        }
+
+        const data = await response.json()
+
+        const aiResponse = {
+          id: Date.now() + 1,
+          type: "assistant",
+          content: data.response,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, aiResponse])
+        // speakResponse(data.response) // Removed automatic playback
       }
-
-      const data = await response.json()
-
-      const aiResponse = {
-        id: Date.now() + 1,
-        type: "assistant",
-        content: data.response,
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, aiResponse])
-      // speakResponse(data.response) // Removed automatic playback
     } catch (error) {
       console.error("Error sending message:", error)
       const errorResponse = {
@@ -659,12 +729,19 @@ export default function Dashboard() {
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2">
                 <Sparkles className="h-5 w-5 text-blue-400" />
-                <h1 className="text-lg font-semibold">LunaLink AI</h1>
+                <h1 className="text-lg font-semibold">{mode === "chat" ? "LunaLink AI" : "Mind Map Visual Mode"}</h1>
               </div>
               <div className="hidden sm:flex items-center space-x-2 text-sm opacity-70">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span>Online • GORQ Turbo</span>
               </div>
+              <button
+                onClick={() => setMode(mode === "chat" ? "mindmap" : "chat")}
+                className="p-2 hover:bg-gray-200/10 rounded-lg transition-all duration-200 ml-2"
+                title={mode === "chat" ? "Switch to Mind Map" : "Switch to Chat"}
+              >
+                {mode === "chat" ? <Brain className="h-5 w-5 opacity-70" /> : <MessageSquare className="h-5 w-5 opacity-70" />}
+              </button>
             </div>
           </div>
 
@@ -703,174 +780,253 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-4xl mx-auto space-y-6">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`flex space-x-3 max-w-3xl ${message.type === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      message.type === "user"
-                        ? isDarkMode
-                          ? "bg-gradient-to-r from-blue-500/80 to-purple-600/80 backdrop-blur-xl border border-white/10"
-                          : "bg-gradient-to-r from-blue-400/80 to-purple-500/80 backdrop-blur-xl border border-white/10"
-                        : `${messageGlassClasses} border`
-                    } shadow-lg`}
-                  >
-                    {message.type === "user" ? (
-                      <User className="h-4 w-4 text-white" />
-                    ) : (
-                      <Sparkles className="h-4 w-4 text-blue-400" />
-                    )}
-                  </div>
-
-                  <div className={`flex-1 ${message.type === "user" ? "text-right" : ""}`}>
+        {mode === "chat" ? (
+          <>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {messages.map((message) => (
+                  <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`inline-block p-4 rounded-2xl transition-all duration-300 shadow-lg ${
-                        message.type === "user"
-                          ? isDarkMode
-                            ? "bg-gradient-to-r from-blue-600/70 to-purple-600/70 backdrop-blur-xl text-white border border-white/10"
-                            : "bg-gradient-to-r from-blue-500/70 to-purple-500/70 backdrop-blur-xl text-white border border-white/10"
-                          : `${messageGlassClasses} border`
-                      }`}
+                      className={`flex space-x-3 max-w-3xl ${message.type === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
                     >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                    </div>
-                    <div className="flex items-center space-x-2 mt-2">
-                      <span className="text-xs opacity-60">
-                        {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      {message.type === "assistant" && (
-                        <div className="flex items-center space-x-1">
-                          <button
-                            onClick={() => handleToggleSpeech(message.content)}
-                            className="p-1 hover:bg-gray-200/10 rounded transition-all duration-200"
-                          >
-                            {isSpeaking ? (
-                              <MicOff className="h-3 w-3 opacity-60 text-red-500" />
-                            ) : (
-                              <Volume2 className="h-3 w-3 opacity-60" />
-                            )}
-                          </button>
-                          <button className="p-1 hover:bg-gray-200/10 rounded transition-all duration-200">
-                            <Copy className="h-3 w-3 opacity-60" />
-                          </button>
-                          <button className="p-1 hover:bg-gray-200/10 rounded transition-all duration-200">
-                            <Share className="h-3 w-3 opacity-60" />
-                          </button>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          message.type === "user"
+                            ? isDarkMode
+                              ? "bg-gradient-to-r from-blue-500/80 to-purple-600/80 backdrop-blur-xl border border-white/10"
+                              : "bg-gradient-to-r from-blue-400/80 to-purple-500/80 backdrop-blur-xl border border-white/10"
+                            : `${messageGlassClasses} border`
+                        } shadow-lg`}
+                      >
+                        {message.type === "user" ? (
+                          <User className="h-4 w-4 text-white" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 text-blue-400" />
+                        )}
+                      </div>
+
+                      <div className={`flex-1 ${message.type === "user" ? "text-right" : ""}`}>
+                        <div
+                          className={`inline-block p-4 rounded-2xl transition-all duration-300 shadow-lg ${
+                            message.type === "user"
+                              ? isDarkMode
+                                ? "bg-gradient-to-r from-blue-600/70 to-purple-600/70 backdrop-blur-xl text-white border border-white/10"
+                                : "bg-gradient-to-r from-blue-500/70 to-purple-500/70 backdrop-blur-xl text-white border border-white/10"
+                              : `${messageGlassClasses} border`
+                          }`}
+                        >
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                         </div>
-                      )}
+                        <div className="flex items-center space-x-2 mt-2">
+                          <span className="text-xs opacity-60">
+                            {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          {message.type === "assistant" && (
+                            <div className="flex items-center space-x-1">
+                              <button
+                                onClick={() => handleToggleSpeech(message.content)}
+                                className="p-1 hover:bg-gray-200/10 rounded transition-all duration-200"
+                              >
+                                {isSpeaking ? (
+                                  <MicOff className="h-3 w-3 opacity-60 text-red-500" />
+                                ) : (
+                                  <Volume2 className="h-3 w-3 opacity-60" />
+                                )}
+                              </button>
+                              <button className="p-1 hover:bg-gray-200/10 rounded transition-all duration-200">
+                                <Copy className="h-3 w-3 opacity-60" />
+                              </button>
+                              <button className="p-1 hover:bg-gray-200/10 rounded transition-all duration-200">
+                                <Share className="h-3 w-3 opacity-60" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="flex space-x-3 max-w-3xl">
-                  <div
-                    className={`w-8 h-8 rounded-full ${messageGlassClasses} border flex items-center justify-center shadow-lg`}
-                  >
-                    <Sparkles className="h-4 w-4 text-blue-400 animate-pulse" />
-                  </div>
-                  <div className={`${messageGlassClasses} border p-4 rounded-2xl shadow-lg`}>
-                    <div className="flex space-x-1">
-                      <div
-                        className={`w-2 h-2 ${isDarkMode ? "bg-white/50" : "bg-gray-500/50"} rounded-full animate-bounce`}
-                      ></div>
-                      <div
-                        className={`w-2 h-2 ${isDarkMode ? "bg-white/50" : "bg-gray-500/50"} rounded-full animate-bounce`}
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className={`w-2 h-2 ${isDarkMode ? "bg-white/50" : "bg-gray-500/50"} rounded-full animate-bounce`}
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-        <div className={`border-t border-gray-700/20 p-6 ${cardClasses} backdrop-blur-2xl shadow-lg`}>
-          <div className="max-w-4xl mx-auto">
-            <div className="relative flex items-end gap-3">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                className="hidden"
-                accept="image/*,application/pdf"
-              />
-              <button
-                onClick={() => fileInputRef.current.click()}
-                className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
-              >
-                <Paperclip className="h-4 w-4" />
-              </button>
-              <select
-                value={selectedLanguage}
-                onChange={(e) => setSelectedLanguage(e.target.value)}
-                className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10 text-sm`}
-              >
-                {supportedLanguages.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </option>
                 ))}
-              </select>
-              <button
-                onClick={handleVoiceInput}
-                className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
-              >
-                {isRecording ? (
-                  <MicOff className="h-4 w-4 text-red-500" />
-                ) : (
-                  <Mic className="h-4 w-4" />
+
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="flex space-x-3 max-w-3xl">
+                      <div
+                        className={`w-8 h-8 rounded-full ${messageGlassClasses} border flex items-center justify-center shadow-lg`}
+                      >
+                        <Sparkles className="h-4 w-4 text-blue-400 animate-pulse" />
+                      </div>
+                      <div className={`${messageGlassClasses} border p-4 rounded-2xl shadow-lg`}>
+                        <div className="flex space-x-1">
+                          <div
+                            className={`w-2 h-2 ${isDarkMode ? "bg-white/50" : "bg-gray-500/50"} rounded-full animate-bounce`}
+                          ></div>
+                          <div
+                            className={`w-2 h-2 ${isDarkMode ? "bg-white/50" : "bg-gray-500/50"} rounded-full animate-bounce`}
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className={`w-2 h-2 ${isDarkMode ? "bg-white/50" : "bg-gray-500/50"} rounded-full animate-bounce`}
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </button>
-              <textarea
-                ref={inputRef}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Message LunaLink..."
-                className={`flex-1 resize-none min-h-[52px] max-h-32 rounded-xl border ${inputClasses} focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-200 p-4 shadow-lg`}
-                rows={1}
-                style={{
-                  height: "auto",
-                  minHeight: "52px",
-                }}
-                onInput={(e) => {
-                  e.target.style.height = "auto"
-                  e.target.style.height = Math.min(e.target.scrollHeight, 128) + "px"
-                }}
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputMessage.trim() || isLoading}
-                className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gradient-to-r from-blue-500/80 to-purple-600/80 hover:from-blue-600/80 hover:to-purple-700/80" : "bg-gradient-to-r from-blue-400/80 to-purple-500/80 hover:from-blue-500/80 hover:to-purple-600/80"} backdrop-blur-xl text-white rounded-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex items-center justify-between mt-3">
-              <p className="text-xs opacity-60">LunaLink can make mistakes. Consider checking important information.</p>
-              <div className="flex items-center space-x-2 text-xs opacity-60">
-                <span>GORQ</span>
-                <div className="w-1 h-1 bg-current rounded-full"></div>
-                <span>{messages.length} messages</span>
+
+                <div ref={messagesEndRef} />
               </div>
             </div>
+
+            <div className={`border-t border-gray-700/20 p-6 ${cardClasses} backdrop-blur-2xl shadow-lg`}>
+              <div className="max-w-4xl mx-auto">
+                <div className="relative flex items-end gap-3">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    accept="image/*,application/pdf"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current.click()}
+                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </button>
+                  <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10 text-sm`}
+                  >
+                    {supportedLanguages.map((lang) => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleVoiceInput}
+                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
+                  >
+                    {isRecording ? (
+                      <MicOff className="h-4 w-4 text-red-500" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </button>
+                  <textarea
+                    ref={inputRef}
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Message LunaLink..."
+                    className={`flex-1 resize-none min-h-[52px] max-h-32 rounded-xl border ${inputClasses} focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-200 p-4 shadow-lg`}
+                    rows={1}
+                    style={{
+                      height: "auto",
+                      minHeight: "52px",
+                    }}
+                    onInput={(e) => {
+                      e.target.style.height = "auto"
+                      e.target.style.height = Math.min(e.target.scrollHeight, 128) + "px"
+                    }}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!inputMessage.trim() || isLoading}
+                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gradient-to-r from-blue-500/80 to-purple-600/80 hover:from-blue-600/80 hover:to-purple-700/80" : "bg-gradient-to-r from-blue-400/80 to-purple-500/80 hover:from-blue-500/80 hover:to-purple-600/80"} backdrop-blur-xl text-white rounded-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <p className="text-xs opacity-60">LunaLink can make mistakes. Consider checking important information.</p>
+                  <div className="flex items-center space-x-2 text-xs opacity-60">
+                    <span>GORQ</span>
+                    <div className="w-1 h-1 bg-current rounded-full"></div>
+                    <span>{messages.length} messages</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 p-6">
+            <MindMapCanvas
+              data={mindMapData || {
+                topic: "Your Mind Map",
+                branches: [
+                  {
+                    title: "Main Concept",
+                    subtopics: ["Detail 1", "Detail 2"]
+                  },
+                  {
+                    title: "Related Idea",
+                    subtopics: ["Sub idea 1"]
+                  }
+                ]
+              }}
+              zoomLevel={1}
+              largeText={false}
+              highContrast={isDarkMode}
+              focusedNodeId={null}
+              showTutorial={showTutorial}
+              onNodeSelect={setSelectedNodeId}
+              onExpandNode={async (nodeId) => {
+                setIsLoadingMindMap(true)
+                try {
+                  // Find the node label from current mind map data
+                  const findNodeLabel = (nodes, id) => {
+                    for (const node of nodes) {
+                      if (node.id === id) return node.label
+                      if (node.children) {
+                        const found = findNodeLabel(node.children, id)
+                        if (found) return found
+                      }
+                    }
+                    return null
+                  }
+
+                  // For now, use the nodeId to generate a more detailed mind map
+                  const nodeLabel = nodeId.startsWith('branch-')
+                    ? mindMapData?.branches[parseInt(nodeId.split('-')[1])]?.title
+                    : nodeId.startsWith('branch-') && nodeId.includes('-sub-')
+                    ? mindMapData?.branches[parseInt(nodeId.split('-')[1])]?.subtopics?.[parseInt(nodeId.split('-')[3])]
+                    : mindMapData?.topic
+
+                  if (nodeLabel) {
+                    const response = await fetch('http://localhost:8000/mindmap', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        topic: `Expand on: ${nodeLabel}`,
+                        target_language: selectedLanguage
+                      }),
+                    })
+                    const expandedData = await response.json()
+
+                    // Update the mind map with expanded data
+                    setMindMapData(prevData => ({
+                      ...prevData,
+                      branches: [
+                        ...prevData.branches,
+                        ...expandedData.branches.map(branch => ({
+                          ...branch,
+                          title: `${nodeLabel} - ${branch.title}`
+                        }))
+                      ]
+                    }))
+                  }
+                } catch (error) {
+                  console.error('Error expanding node:', error)
+                }
+                setIsLoadingMindMap(false)
+              }}
+              onTutorialClose={() => setShowTutorial(false)}
+            />
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

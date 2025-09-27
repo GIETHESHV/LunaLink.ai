@@ -5,6 +5,8 @@ from googletrans import Translator as GoogleTranslator
 import argostranslate.package
 import argostranslate.translate
 import os
+import json
+from src.utils import get_llm_response
 
 app = FastAPI()
 
@@ -20,6 +22,11 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     target_language: str
+    mode: str = "chat"  # "chat" or "mindmap"
+
+class MindMapRequest(BaseModel):
+    topic: str
+    target_language: str = "en"
 
 # Load Argos Translate packages if not already installed
 def install_argos_package(from_code: str, to_code: str):
@@ -42,6 +49,74 @@ def translate_text(text: str, from_lang: str, to_lang: str) -> str:
     result = google_translator.translate(text, src=from_lang, dest=to_lang)
     return result.text
 
+def generate_mind_map(topic: str, target_language: str = "en"):
+    """Generate structured mind map data using LLM."""
+    # Translate topic to English if needed
+    if target_language != "en":
+        topic_english = translate_text(topic, target_language, "en")
+    else:
+        topic_english = topic
+
+    # Prompt for LLM to generate mind map structure
+    prompt = f"""
+    Create a mind map for the topic: "{topic_english}"
+
+    Return ONLY valid JSON in this exact format:
+    {{
+      "topic": "{topic_english}",
+      "branches": [
+        {{
+          "title": "Branch 1 Title",
+          "subtopics": ["Subtopic 1", "Subtopic 2"]
+        }},
+        {{
+          "title": "Branch 2 Title",
+          "subtopics": ["Subtopic A", "Subtopic B"]
+        }}
+      ]
+    }}
+
+    Generate 3-5 main branches with 2-4 subtopics each. Keep titles concise and relevant.
+    """
+
+    # Get LLM response (using empty history and similar conversations for initial generation)
+    response = get_llm_response(prompt, [], [], {'compound': 0}, None)
+
+    try:
+        # Extract JSON from response
+        json_start = response.find('{')
+        json_end = response.rfind('}') + 1
+        json_str = response[json_start:json_end]
+        mind_map_data = json.loads(json_str)
+
+        # Translate branch titles and subtopics back to target language if needed
+        if target_language != "en":
+            for branch in mind_map_data['branches']:
+                branch['title'] = translate_text(branch['title'], "en", target_language)
+                if branch['subtopics']:
+                    branch['subtopics'] = [translate_text(sub, "en", target_language) for sub in branch['subtopics']]
+
+        return mind_map_data
+    except json.JSONDecodeError:
+        # Fallback to default structure if JSON parsing fails
+        return {
+            "topic": topic,
+            "branches": [
+                {
+                    "title": "Introduction",
+                    "subtopics": ["Overview", "Key Concepts"]
+                },
+                {
+                    "title": "Details",
+                    "subtopics": ["Main Points", "Examples"]
+                },
+                {
+                    "title": "Conclusion",
+                    "subtopics": ["Summary", "Next Steps"]
+                }
+            ]
+        }
+
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
@@ -51,15 +126,29 @@ async def chat_endpoint(request: ChatRequest):
         else:
             message_in_english = request.message
 
-        # TODO: Replace with actual AI model processing
-        ai_response_english = f"Echo: {message_in_english}"
-
-        # Translate AI response back to target language if needed
-        if request.target_language != "en":
-            ai_response_translated = translate_text(ai_response_english, "en", request.target_language)
+        if request.mode == "mindmap":
+            # Generate mind map data for the message
+            mind_map_data = generate_mind_map(message_in_english, request.target_language)
+            return {"mindmap": mind_map_data}
         else:
-            ai_response_translated = ai_response_english
+            # Regular chat response
+            # TODO: Replace with actual AI model processing
+            ai_response_english = f"Echo: {message_in_english}"
 
-        return {"response": ai_response_translated}
+            # Translate AI response back to target language if needed
+            if request.target_language != "en":
+                ai_response_translated = translate_text(ai_response_english, "en", request.target_language)
+            else:
+                ai_response_translated = ai_response_english
+
+            return {"response": ai_response_translated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/mindmap")
+async def mindmap_endpoint(request: MindMapRequest):
+    try:
+        mind_map_data = generate_mind_map(request.topic, request.target_language)
+        return mind_map_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
