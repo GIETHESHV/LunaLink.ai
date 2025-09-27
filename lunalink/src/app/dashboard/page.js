@@ -99,36 +99,56 @@ export default function Dashboard() {
   const generateMindMap = useCallback(async (topic) => {
     setIsLoadingMindMap(true)
     try {
-      const response = await fetch('http://localhost:8000/chat', {
+      const response = await fetch('http://localhost:8000/mindmap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: topic, 
-          target_language: selectedLanguage, 
-          mode: 'mindmap' 
+        body: JSON.stringify({
+          topic: topic,
+          target_language: selectedLanguage
         }),
       })
       const data = await response.json()
+      console.log('Mindmap API Response:', data); // Debug logging
       if (data.mindmap) {
         setMindMapData(data.mindmap)
+      } else {
+        console.warn('No mindmap data in response, using fallback for topic:', topic); // Debug warning
+        // Fallback to default data using the topic
+        setMindMapData({
+          topic: topic,
+          branches: [
+            {
+              title: "Introduction",
+              subtopics: ["Overview", "Key Concepts", "Basics"]
+            },
+            {
+              title: "Main Features",
+              subtopics: ["Core Elements", "Key Components", topic ? `Specific to ${topic}` : "General"]
+            },
+            {
+              title: "Next Steps",
+              subtopics: ["Explore Further", "Apply Knowledge", "Practice"]
+            }
+          ]
+        })
       }
     } catch (error) {
       console.error('Error generating mind map:', error)
-      // Fallback to default data
+      // Fallback to default data using the topic
       setMindMapData({
-        topic: topic || "LunaLink AI Assistant",
+        topic: topic,
         branches: [
           {
             title: "Introduction",
-            subtopics: ["Overview", "Key Concepts"]
+            subtopics: ["Overview", "Key Concepts", "Basics"]
           },
           {
-            title: "Features",
-            subtopics: ["Chat Mode", "Voice Mode", "Mind Map"]
+            title: "Main Features",
+            subtopics: ["Core Elements", "Key Components", topic ? `Specific to ${topic}` : "General"]
           },
           {
             title: "Next Steps",
-            subtopics: ["Explore", "Customize", "Share"]
+            subtopics: ["Explore Further", "Apply Knowledge", "Practice"]
           }
         ]
       })
@@ -183,15 +203,30 @@ export default function Dashboard() {
     setIsLoading(true)
 
     try {
-      if (mode === "mindmap") {
-        // Generate mind map from the message
-        await generateMindMap(inputMessage)
+      // Check if the message is requesting a mind map creation
+      const isMindMapRequest = /create a mind map|generate a mind map|make a mind map|mind map about/i.test(inputMessage)
+
+      if (isMindMapRequest || mode === "mindmap") {
+        // Extract topic from mind map request or use the full message
+        let topic = inputMessage
+        if (isMindMapRequest) {
+          const topicMatch = inputMessage.match(/(?:create|generate|make) a mind map (?:about|for|on) (.+)/i)
+          topic = topicMatch ? topicMatch[1].trim() : inputMessage.replace(/create a mind map|generate a mind map|make a mind map/i, '').trim()
+        }
+
+        // Generate mind map from API
+        await generateMindMap(topic)
+
+        // Switch to mind map mode if not already
+        if (mode !== "mindmap") {
+          setMode("mindmap")
+        }
 
         // Add a confirmation message
         const aiResponse = {
           id: Date.now() + 1,
           type: "assistant",
-          content: `I've generated a mind map for: "${inputMessage}"`,
+          content: `I've created a mind map for: "${topic}". You can now explore the branches and expand nodes for more details.`,
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, aiResponse])
@@ -712,7 +747,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col relative z-10 mt-12">
+      <div className="flex-1 flex flex-col relative z-10 mt-12 pb-40">
         {/* Chat Header */}
         <div
           className={`h-16 border-b border-gray-700/20 flex items-center justify-between px-6 ${cardClasses} backdrop-blur-2xl shadow-lg`}
@@ -878,78 +913,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className={`border-t border-gray-700/20 p-6 ${cardClasses} backdrop-blur-2xl shadow-lg`}>
-              <div className="max-w-4xl mx-auto">
-                <div className="relative flex items-end gap-3">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    accept="image/*,application/pdf"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current.click()}
-                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </button>
-                  <select
-                    value={selectedLanguage}
-                    onChange={(e) => setSelectedLanguage(e.target.value)}
-                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10 text-sm`}
-                  >
-                    {supportedLanguages.map((lang) => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleVoiceInput}
-                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-200/50"} rounded-xl hover:bg-gray-700/70 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
-                  >
-                    {isRecording ? (
-                      <MicOff className="h-4 w-4 text-red-500" />
-                    ) : (
-                      <Mic className="h-4 w-4" />
-                    )}
-                  </button>
-                  <textarea
-                    ref={inputRef}
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Message LunaLink..."
-                    className={`flex-1 resize-none min-h-[52px] max-h-32 rounded-xl border ${inputClasses} focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-200 p-4 shadow-lg`}
-                    rows={1}
-                    style={{
-                      height: "auto",
-                      minHeight: "52px",
-                    }}
-                    onInput={(e) => {
-                      e.target.style.height = "auto"
-                      e.target.style.height = Math.min(e.target.scrollHeight, 128) + "px"
-                    }}
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!inputMessage.trim() || isLoading}
-                    className={`flex-shrink-0 p-3 ${isDarkMode ? "bg-gradient-to-r from-blue-500/80 to-purple-600/80 hover:from-blue-600/80 hover:to-purple-700/80" : "bg-gradient-to-r from-blue-400/80 to-purple-500/80 hover:from-blue-500/80 hover:to-purple-600/80"} backdrop-blur-xl text-white rounded-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 self-end shadow-lg border border-white/10`}
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <p className="text-xs opacity-60">LunaLink can make mistakes. Consider checking important information.</p>
-                  <div className="flex items-center space-x-2 text-xs opacity-60">
-                    <span>GORQ</span>
-                    <div className="w-1 h-1 bg-current rounded-full"></div>
-                    <span>{messages.length} messages</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </>
         ) : (
           <div className="flex-1 p-6">
@@ -1027,6 +990,91 @@ export default function Dashboard() {
             />
           </div>
         )}
+
+        {/* Bottom Input Area */}
+        <div className={`fixed bottom-0 right-0 transition-all duration-300 z-20 ${sidebarOpen ? "left-80" : "left-0"}`}>
+          <div className={`${cardClasses} border-t backdrop-blur-2xl shadow-lg p-4`}>
+            {/* Language Selector */}
+            <div className="flex items-center justify-center space-x-2 mb-3">
+              {supportedLanguages.slice(0, 5).map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => setSelectedLanguage(lang.code)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
+                    selectedLanguage === lang.code
+                      ? isDarkMode
+                        ? "bg-blue-500/80 text-white shadow-lg"
+                        : "bg-blue-400/80 text-white shadow-lg"
+                      : isDarkMode
+                      ? "bg-gray-700/50 hover:bg-gray-600/50 text-gray-300"
+                      : "bg-gray-200/50 hover:bg-gray-300/50 text-gray-700"
+                  }`}
+                >
+                  {lang.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Input Controls */}
+            <div className="flex space-x-3 items-end">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 hover:bg-gray-200/10 rounded-xl transition-all duration-200"
+              >
+                <Paperclip className="h-5 w-5 opacity-60" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <div className="flex-1 relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type your message here..."
+                  className={`w-full bg-transparent border-none outline-none text-lg ${inputClasses} rounded-xl px-4 py-3`}
+                  disabled={isLoading}
+                />
+              </div>
+              <button
+                onClick={handleVoiceInput}
+                className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center ${
+                  isRecording
+                    ? "bg-red-500/20 border border-red-500/30"
+                    : isDarkMode
+                    ? "bg-gray-700/50 hover:bg-gray-600/50 border border-gray-600/50"
+                    : "bg-gray-300/50 hover:bg-gray-400/50 border border-gray-400/50"
+                }`}
+              >
+                {isRecording ? <MicOff className="h-5 w-5 text-red-500" /> : <Mic className="h-5 w-5 opacity-60" />}
+              </button>
+              <button
+                onClick={handleSendMessage}
+                disabled={isLoading || !inputMessage.trim()}
+                className={`p-3 rounded-xl ${isLoading || !inputMessage.trim() ? "opacity-50 cursor-not-allowed" : "hover:scale-105"} transition-all duration-200 flex items-center justify-center ${
+                  isDarkMode
+                    ? "bg-gradient-to-r from-blue-400/80 to-purple-500/80 hover:from-blue-500/80 hover:to-purple-600/80"
+                    : "bg-gradient-to-r from-blue-400/80 to-purple-500/80 hover:from-blue-500/80 hover:to-purple-600/80"
+                } backdrop-blur-xl text-white rounded-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg border border-white/10`}
+              >
+                <ArrowUp className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <p className="text-xs opacity-60">LunaLink can make mistakes. Consider checking important information.</p>
+              <div className="flex items-center space-x-2 text-xs opacity-60">
+                <span>GORQ</span>
+                <div className="w-1 h-1 bg-current rounded-full"></div>
+                <span>{messages.length} messages</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

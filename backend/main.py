@@ -2,8 +2,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from googletrans import Translator as GoogleTranslator
-import argostranslate.package
-import argostranslate.translate
 import os
 import json
 from src.utils import get_llm_response
