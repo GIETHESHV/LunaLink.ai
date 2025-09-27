@@ -33,8 +33,8 @@ Before you begin, ensure you have the following installed on your system:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/GIETHESHV/LunaLink-AI-Chatbot.git
-cd LunaLink-AI-Chatbot
+git clone https://github.com/GIETHESHV/LunaLink.ai.git
+cd LunaLink.ai
 ```
 
 ### 2. Backend Setup (Python)
