@@ -1,0 +1,4 @@
+- [x] Edit lunalink/src/app/api/chat/route.js for better error handling
+- [x] Edit main.py to remove Ollama fallback and improve error messages
+- [ ] Update src/utils.py to use PocketSphinx for local speech recognition
+- [ ] Test the chat endpoint to ensure proper responses
