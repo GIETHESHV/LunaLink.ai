@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from googletrans import Translator as GoogleTranslator
 import os
 import json
 from src.utils import get_llm_response
+from src.sign_language_model import predict_sign
 
 app = FastAPI()
 
@@ -148,5 +149,14 @@ async def mindmap_endpoint(request: MindMapRequest):
     try:
         mind_map_data = generate_mind_map(request.topic, request.target_language)
         return mind_map_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/predict_sign")
+async def predict_sign_endpoint(file: UploadFile = File(...)):
+    try:
+        image_bytes = await file.read()
+        result = predict_sign(image_bytes)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

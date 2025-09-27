@@ -1,31 +1,34 @@
-# Integrate Mind Map Visual Mode MVP into LunaLink
+# LunaLink Integration TODO
 
-## Step 1: Move Mind Map Components to Next.js
-- [x] Create lunalink/components/mindmap/ folder
-- [x] Copy and adapt MindMapCanvas.tsx, MindMapNode.tsx, MindMapConnection.tsx from Mind Map/src/components/
-- [x] Copy other components: Header.tsx, BottomToolbar.tsx, etc.
-- [x] Install missing dependencies: framer-motion (motion)
+## ✅ Completed
+- [x] Analyzed Mind Map MVP components from Figma export
+- [x] Moved MindMapCanvas, MindMapNode, MindMapConnection to lunalink/components/mindmap/
+- [x] Updated dashboard to support mode switching (chat/mindmap)
+- [x] Added mindmap generation endpoint to backend
+- [x] Integrated actual chatbot logic into backend
+- [x] Added sign language prediction endpoint
+- [x] Updated sign language model to work with/without MediaPipe
+- [x] Installed TensorFlow, OpenCV, NumPy dependencies
 
-## Step 2: Update Dashboard for Mode Toggle
-- [x] Add mode state ('chat' | 'mindmap') to dashboard page.js
-- [x] Add toggle button in header to switch modes
-- [x] Conditionally render chat UI or MindMapCanvas based on mode
-- [x] Pass data from API to MindMapCanvas
-- [x] Add tutorial overlay with close functionality
+## 🔄 In Progress
+- [ ] Testing backend endpoints (/mindmap, /predict_sign)
+- [ ] Testing frontend mode switching
+- [ ] Testing sign language camera integration
 
-## Step 3: Modify Backend for Mind Map Support
-- [ ] Integrate src/chatbot.py logic into backend/main.py
-- [ ] Add /mindmap endpoint that returns JSON structure
-- [ ] Update /chat endpoint to accept mode parameter
-- [ ] Generate structured mind map data from AI response
+## 📋 Remaining Tasks
+- [ ] Verify mind map rendering in dashboard
+- [ ] Test real-time sign language prediction
+- [ ] Add TTS integration for mind map mode
+- [ ] Optimize performance and error handling
+- [ ] Add accessibility features for mind map navigation
 
-## Step 4: Adapt Mind Map Components for Dynamic Data
-- [x] Modify MindMapCanvas to accept data prop instead of hardcoded nodes
-- [ ] Implement node expansion on click (recursive API calls)
-- [ ] Add loading states and error handling
+## 🐛 Known Issues
+- MediaPipe not compatible with Python 3.13 (fallback implemented)
+- Need to test model loading from root directory
+- Frontend may need additional dependencies for mind map components
 
-## Step 5: Testing and Integration
-- [ ] Test mode switching in dashboard
-- [ ] Test mind map rendering with sample data
-- [ ] Test API endpoints
-- [ ] Ensure TTS works with mind map mode
+## 🧪 Testing Checklist
+- [ ] Backend: curl -X POST http://localhost:8000/mindmap -H "Content-Type: application/json" -d '{"topic":"test","target_language":"en"}'
+- [ ] Frontend: Navigate to dashboard, toggle mind map mode
+- [ ] Sign Language: Navigate to /sign-language, test camera and prediction
+- [ ] Integration: Test full chat -> mind map flow
